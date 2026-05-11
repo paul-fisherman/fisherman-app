@@ -3,7 +3,12 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+from streamlit_autorefresh import st_autorefresh
 from datetime import datetime
+
+# 每 15 分钟自动刷新一次页面
+st_autorefresh(interval=15 * 60 * 1000, key="datarefresh")
+
 
 # --- 仪表盘美学配置 ---
 st.set_page_config(page_title="The Fisherman TSLA", layout="centered")
@@ -26,7 +31,7 @@ def calculate_kdj(df, n=9):
     df['J'] = 3 * df['K'] - 2 * df['D']
     return df
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=900)
 def get_market_data():
     tsla = yf.Ticker("TSLA")
     hist = tsla.history(period="1y")
