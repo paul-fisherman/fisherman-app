@@ -1,102 +1,247 @@
 import streamlit as st
-import yfinance as yf
+import yfinance as tf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
 from datetime import datetime
+import pytz
 
-# 每 15 分钟自动刷新一次页面
-st_autorefresh(interval=15 * 60 * 1000, key="datarefresh")
+# --- 0. 自动刷新配置（5分钟赛博发条） ---
+# 5分钟 = 5 * 60 * 1000 = 300000 毫秒
+st_autorefresh(interval=5 * 60 * 1000, key="cyber_refresh")
 
+# --- 1. 赛博朋克 UI 视觉注入 (定制 CSS HUD) ---
+st.set_page_config(page_title="FISHERMAN // TERMINAL", layout="centered")
 
-# --- 仪表盘美学配置 ---
-st.set_page_config(page_title="The Fisherman TSLA", layout="centered")
+cyber_css = """
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Ubuntu+Mono&display=swap');
+    
+    /* 核心背景与字体定义 */
+    .stApp {
+        background-color: #050505 !important;
+        background-image: linear-gradient(rgba(0, 243, 255, 0.02) 1px, transparent 1px),
+                          linear-gradient(90deg, rgba(0, 243, 255, 0.02) 1px, transparent 1px) !important;
+        background-size: 30px 30px !important;
+    }
+    
+    h1, h2, h3, h4 {
+        font-family: 'Orbitron', sans-serif !important;
+        letter-spacing: 2px !important;
+    }
+    
+    .cyber-title {
+        color: #00f3ff;
+        text-shadow: 0 0 15px #00f3ff;
+        font-size: 36px;
+        font-weight: 700;
+        text-align: center;
+        margin-bottom: 5px;
+    }
+    
+    .cyber-subtitle {
+        color: #ff00ff;
+        font-family: 'Orbitron', sans-serif;
+        text-align: center;
+        font-size: 14px;
+        letter-spacing: 4px;
+        margin-bottom: 30px;
+        text-shadow: 0 0 8px #ff00ff;
+    }
 
-st.markdown("""
-    <style>
-    .main { background-color: #0e1117; color: #fafafa; }
-    div[data-testid="stMetricValue"] { font-size: 28px; color: #00ffcc; }
-    .stProgress > div > div > div > div { background-color: #00ffcc; }
-    </style>
-    """, unsafe_allow_html=True)
+    /* 赛博 HUD 数据方块 */
+    .hud-container {
+        display: flex;
+        gap: 15px;
+        justify-content: space-between;
+        margin-bottom: 25px;
+    }
+    .hud-box {
+        flex: 1;
+        background: rgba(10, 10, 10, 0.8);
+        border: 1px solid #00f3ff;
+        box-shadow: 0 0 10px rgba(0, 243, 255, 0.15);
+        padding: 15px;
+        border-radius: 4px;
+        text-align: center;
+        position: relative;
+    }
+    .hud-box::before {
+        content: ''; position: absolute; top: 0; left: 0; width: 6px; height: 6px; border-top: 2px solid #ff00ff; border-left: 2px solid #ff00ff;
+    }
+    .hud-label {
+        font-family: 'Orbitron', sans-serif;
+        color: #888;
+        font-size: 12px;
+        text-transform: uppercase;
+        margin-bottom: 5px;
+    }
+    .hud-value {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 26px;
+        font-weight: bold;
+    }
+    
+    /* 极致美化战术建议框 */
+    .advice-box {
+        padding: 20px;
+        border-radius: 4px;
+        font-family: 'Ubuntu Mono', monospace;
+        font-size: 16px;
+        line-height: 1.5;
+        margin-top: 20px;
+        position: relative;
+    }
+    .advice-critical {
+        border: 1px solid #ff00ff;
+        background: rgba(255, 0, 255, 0.04);
+        box-shadow: 0 0 15px rgba(255, 0, 255, 0.25);
+        color: #ff00ff;
+    }
+    .advice-success {
+        border: 1px solid #00ff41;
+        background: rgba(0, 255, 65, 0.04);
+        box-shadow: 0 0 15px rgba(0, 255, 65, 0.25);
+        color: #00ff41;
+    }
+    .advice-warning {
+        border: 1px solid #ffaa00;
+        background: rgba(255, 170, 0, 0.04);
+        box-shadow: 0 0 12px rgba(255, 170, 0, 0.15);
+        color: #ffaa00;
+    }
+</style>
+"""
+st.markdown(cyber_css, unsafe_allow_html=True)
 
-# --- 核心计算引擎 ---
-def calculate_kdj(df, n=9):
-    low_list = df['Low'].rolling(window=n).min()
-    high_list = df['High'].rolling(window=n).max()
-    rsv = (df['Close'] - low_list) / (high_list - low_list) * 100
-    df['K'] = rsv.ewm(com=2).mean()
-    df['D'] = df['K'].ewm(com=2).mean()
-    df['J'] = 3 * df['K'] - 2 * df['D']
-    return df
+# --- 2. 实时北京时间校准 ---
+beijing_tz = pytz.timezone('Asia/Shanghai')
+beijing_time = datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')
 
-@st.cache_data(ttl=900)
-def get_market_data():
-    tsla = yf.Ticker("TSLA")
-    hist = tsla.history(period="1y")
-    hist = calculate_kdj(hist)
-    vix = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
-    # 模拟 IV Rank (基于20日历史波动率百分位)
-    vol = hist['Close'].pct_change().rolling(window=20).std() * np.sqrt(252)
-    iv_rank = (vol.iloc[-1] - vol.min()) / (vol.max() - vol.min()) * 100
-    return hist.iloc[-1], vix, iv_rank
+# 终端主标题渲染
+st.markdown('<div class="cyber-title">FISHERMAN // MAINNET 1.0</div>', unsafe_allow_html=True)
+st.markdown('<div class="cyber-subtitle">// TSLA QUANTUM RADAR //</div>', unsafe_allow_html=True)
 
-# --- 界面渲染 ---
-st.title("🎣 The Fisherman")
-st.caption("百万账户级 · TSLA 动态捕鱼仪表盘")
+# 侧边栏置顶时间线
+st.sidebar.markdown("### 📡 TERMINAL STATUS")
+st.sidebar.markdown(f"⏱️ **BEIJING TIME**:\n`{beijing_time}`")
+st.sidebar.markdown("⚡ **REFRESH RATE**: `5 MINS`")
+
+# --- 3. 数据抓取与 KDJ 计算 (全面对齐 5分钟 缓存) ---
+@st.cache_data(ttl=300)  # 严格锁定 300 秒缓存
+def fetch_cyber_market_data():
+    tsla_df = tf.download("TSLA", period="3mo", interval="1d")
+    vix_df = tf.download("^VIX", period="1mo", interval="1d")
+    
+    if tsla_df.empty or vix_df.empty:
+        raise ValueError("Data pipeline returned empty data matrix.")
+        
+    # KDJ 核心算法逻辑
+    low_list = tsla_df['Low'].rolling(9, min_periods=9).min()
+    high_list = tsla_df['High'].rolling(9, min_periods=9).max()
+    rsv = (tsla_df['Close'] - low_list) / (high_list - low_list) * 100
+    
+    tsla_df['K'] = rsv.ewm(com=2).mean()
+    tsla_df['D'] = tsla_df['K'].ewm(com=2).mean()
+    tsla_df['J'] = 3 * tsla_df['K'] - 2 * tsla_df['D']
+    
+    return tsla_df.iloc[-1], vix_df.iloc[-1]
 
 try:
-    last_data, vix, iv_rank = get_market_data()
-    j_val = last_data['J']
-    price = last_data['Close']
-
-    # 1. 3000股目标进度
+    last_tsla, last_vix = fetch_cyber_market_data()
+    
+    # 转换为原生浮点数，杜绝多维索引污染
+    tsla_price = float(last_tsla['Close'].values[0] if isinstance(last_tsla['Close'], pd.Series) else last_tsla['Close'])
+    j_val = float(last_tsla['J'].values[0] if isinstance(last_tsla['J'], pd.Series) else last_tsla['J'])
+    vix_val = float(last_vix['Close'].values[0] if isinstance(last_vix['Close'], pd.Series) else last_vix['Close'])
+    
+    # --- 4. 赛博 HUD 仪表板渲染 ---
+    hud_html = f"""
+    <div class="hud-container">
+        <div class="hud-box">
+            <div class="hud-label">TSLA PRICE</div>
+            <div class="hud-value" style="color: #00f3ff; text-shadow: 0 0 10px #00f3ff;">${tsla_price:.2f}</div>
+        </div>
+        <div class="hud-box">
+            <div class="hud-label">CURRENT J-VAL</div>
+            <div class="hud-value" style="color: {'#ff00ff' if j_val > 80 or j_val < 0 else '#00ff41'}; text-shadow: 0 0 10px {'#ff00ff' if j_val > 80 or j_val < 0 else '#00ff41'};">{j_val:.1f}</div>
+        </div>
+        <div class="hud-box">
+            <div class="hud-label">VIX INDEX</div>
+            <div class="hud-value" style="color: #ffaa00; text-shadow: 0 0 10px #ffaa00;">{vix_val:.2f}</div>
+        </div>
+    </div>
+    """
+    st.markdown(hud_html, unsafe_allow_html=True)
+    
+    # --- 5. OPTIMUS 进度条 (赛博渐变霓虹版) ---
+    st.markdown("<h4 style='color:#e0e0e0; margin-bottom:10px;'>🤖 OPTIMUS ACCUMULATION PROFILE</h4>", unsafe_allow_html=True)
     current_shares = 2440
     target_shares = 3000
-    progress = current_shares / target_shares
+    progress_percent = (current_shares / target_shares) * 100
+    shares_left = target_shares - current_shares
     
-    st.write(f"📊 **3,000 股目标进度: {current_shares} / {target_shares} ({progress*100:.1f}%)**")
-    st.progress(progress)
-    st.write(f"距离目标还差 **{target_shares - current_shares}** 股。")
-
-    st.markdown("---")
-
-    # 2. 核心指标展示
-    col1, col2, col3 = st.columns(3)
-    col1.metric("TSLA 现价", f"${price:.2f}")
-    col2.metric("J-Value", f"{j_val:.1f}", delta="厚实" if j_val < 20 else "太薄", delta_color="normal" if j_val < 20 else "inverse")
-    col3.metric("VIX 恐慌指数", f"{vix:.1f}")
-
-    # 3. 收割指数计算 (J + VIX + IV Rank)
-    j_score = max(0, (20 - j_val) * 2.5) if j_val < 20 else 0
-    vix_score = min(100, (vix / 30) * 100)
-    total_score = (j_score * 0.5) + (vix_score * 0.3) + (iv_rank * 0.2)
-
+    progress_html = f"""
+    <div style="background: #111; border: 1px solid #00ff41; height: 26px; border-radius: 4px; overflow: hidden; position: relative; margin-bottom: 10px;">
+        <div style="width: {progress_percent:.1f}%; background: linear-gradient(90deg, #00ff41, #00f3ff); height: 100%; box-shadow: 0 0 12px #00ff41;"></div>
+        <div style="position: absolute; width: 100%; text-align: center; top: 0; line-height: 26px; font-family: 'Orbitron'; font-size: 13px; color: #fff; font-weight: bold; text-shadow: 0 0 4px #000;">
+            {progress_percent:.1f}% NETWORK DEPLOYED
+        </div>
+    </div>
+    <div style="font-family: 'Ubuntu Mono'; color: #888; font-size: 14px; margin-bottom: 25px;">
+        📊 HOLDING: <strong style="color:#00ff41;">{current_shares}</strong> SHARES | TARGET: <strong style="color:#00f3ff;">{target_shares}</strong> SHARES | CAP GAP: <strong style="color:#ff00ff;">{shares_left}</strong> SHARES UNIT
+    </div>
+    """
+    st.markdown(progress_html, unsafe_allow_html=True)
+    
+    # --- 6. 综合收割指数半表盘 ---
+    st.markdown("<h4 style='color:#e0e0e0; margin-bottom:5px;'>🌊 INTEGRATED HARVEST INDEX</h4>", unsafe_allow_html=True)
+    j_score = np.clip((100 - j_val) / 1.2, 0, 60)
+    vix_score = np.clip(vix_val * 2, 0, 40)
+    harvest_index = j_score + vix_score
+    
     fig = go.Figure(go.Indicator(
-        mode = "gauge+number",
-        value = total_score,
-        gauge = {
-            'axis': {'range': [0, 100]},
-            'bar': {'color': "#00ffcc"},
-            'steps' : [
-                {'range': [0, 40], 'color': "#222"},
-                {'range': [40, 75], 'color': "#444"},
-                {'range': [75, 100], 'color': "#1a472a"}]
+        mode="gauge+number",
+        value=harvest_index,
+        domain={'x': [0, 1], 'y': [0, 1]},
+        gauge={
+            'axis': {'range': [None, 100], 'tickcolor': "#00f3ff"},
+            'bar': {'color': "#00f3ff"},
+            'steps': [
+                {'range': [0, 40], 'color': "#111"},
+                {'range': [40, 70], 'color': "#1a1f2c"},
+                {'range': [70, 100], 'color': "#0a2f30"}
+            ],
         }
     ))
-    fig.update_layout(height=300, margin=dict(l=20, r=20, t=50, b=20), paper_bgcolor='rgba(0,0,0,0)', font={'color': "white"})
+    fig.update_layout(height=220, margin=dict(l=10, r=10, t=30, b=10), template="plotly_dark")
+    fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig, use_container_width=True)
-
-    # 4. 自动决策提示
-    if total_score > 75:
-        st.success("🔥 **行动建议：全力收割！** 权利金极厚，J值已探底。")
-    elif total_score > 40:
-        st.warning("☕ **行动建议：继续喝咖啡等待。** 还没到时候，等J值跌破20。")
+    
+    # --- 7. 动态战术建议 (彻底修复 Bug 的高精度阶梯逻辑门) ---
+    if j_val < 0:
+        advice_html = f"""
+        <div class="advice-box advice-critical">
+            ⚡ <strong>[CRITICAL PROTOCOL // 深水炸弹触发]</strong><br>
+            J值已彻底击穿0轴底线（当前实时精确值: <strong>{j_val:.1f}</strong>），市场情绪陷入极端恐慌冰点，深水水位极其“厚实”！核心仓位防御圈完全打开。建议立刻执行收割，在 Moomoo/Firstrade 坚决挂单高溢价 Sell Put，全速抢夺权利金肥肉！
+        </div>
+        """
+    elif j_val <= 20:
+        advice_html = f"""
+        <div class="advice-box advice-success">
+            🐟 <strong>[TACTICAL SIGNAL // 鱼群大量进窝]</strong><br>
+            J值已成功杀入20以下的“安全厚实区间”（当前实时精确值: <strong>{j_val:.1f}</strong>）。水流深度符合捕鱼指标，期权隐波处于优势期。下网时机完全成熟，适合分批次、多节点部署阶梯式 Put 防御拦截网，稳步向 3000 股终极目标靠拢。
+        </div>
+        """
     else:
-        st.info("🚫 **行动建议：不值得出手。** 市场太狂热，权利金太薄。")
+        advice_html = f"""
+        <div class="advice-box advice-warning">
+            ☕ <strong>[STANDBY MODE // 静默喝咖啡等待]</strong><br>
+            当前J值依然飘在空中（当前实时精确值: <strong>{j_val:.1f}</strong>），高于20临界值，水流太薄，多头仍在高位拉扯。长线猎手请保持克制，切勿抢跑接飞刀。将看盘权限全权移交 Fisherman 定时系统，静候指标落地。
+        </div>
+        """
+    st.markdown(advice_html, unsafe_allow_html=True)
 
 except Exception as e:
-    st.error("正在同步美股数据... 请稍后。")
-
-st.caption(f"Last Update: {datetime.now().strftime('%H:%M:%S')} | 策略：J值收割 v2.0")
+    st.error(f"📡 终端核心网元连接超时。ERROR CODES: {e}")
