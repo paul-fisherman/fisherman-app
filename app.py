@@ -81,6 +81,15 @@ cyber_css = """
         font-weight: bold;
     }
     
+    .matrix-box {
+        background: rgba(5, 5, 5, 0.9);
+        border: 1px dashed #333;
+        padding: 15px;
+        border-radius: 4px;
+        font-family: 'Ubuntu Mono', monospace;
+        margin-bottom: 20px;
+    }
+    
     .advice-box {
         padding: 20px;
         border-radius: 4px;
@@ -112,55 +121,59 @@ cyber_css = """
 """
 st.markdown(cyber_css, unsafe_allow_html=True)
 
-# --- 3. 实时北京时间校准 ---
+# --- 3. 实时时钟与事件解算 (通过标准 .localize() 彻底封死时区Bug) ---
 beijing_tz = pytz.timezone('Asia/Shanghai')
-beijing_time = datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')
+now_bj = datetime.now(beijing_tz)
+beijing_time = now_bj.strftime('%Y-%m-%d %H:%M:%S')
+
+# 动态精密计算愿景大事件倒计时（对齐2026核心节点）
+date_earnings = beijing_tz.localize(datetime(2026, 7, 22, 4, 0)) # 预估Q2财报夜
+date_optimus = beijing_tz.localize(datetime(2026, 9, 30, 9, 0))  # 预估Optimus量产线启动
+days_to_earnings = max((date_earnings - now_bj).days, 0)
+days_to_optimus = max((date_optimus - now_bj).days, 0)
+
+# 计算距离本周五期权交割日的核心间距，用于解算标准差
+days_to_friday = (4 - now_bj.weekday()) % 7
+if days_to_friday == 0 and now_bj.hour >= 16:
+    days_to_friday = 7
+days_to_friday = max(days_to_friday, 0.5) # 保护分母
 
 # 终端主标题渲染
-st.markdown('<div class="cyber-title">FISHERMAN // MAINNET 2.0</div>', unsafe_allow_html=True)
+st.markdown('<div class="cyber-title">FISHERMAN // MAINNET 2.5</div>', unsafe_allow_html=True)
 st.markdown('<div class="cyber-subtitle">// TSLA QUANTUM RADAR //</div>', unsafe_allow_html=True)
 
-# --- 4. 侧边栏多维控制台 (北京时间 + 2.0 货舱控制器) ---
+# --- 4. 侧边栏多维控制台 (北京时间 + 货舱控制器) ---
 st.sidebar.markdown("### 📡 TERMINAL STATUS")
 st.sidebar.markdown(f"⏱️ **BEIJING TIME**:\n`{beijing_time}`")
 st.sidebar.markdown("⚡ **REFRESH RATE**: `5 MINS`")
 st.sidebar.markdown("---")
 
-# 🎛️ 2.0 货舱控制器
 st.sidebar.markdown("### 🎛️ CARGO CONTROLLER")
 current_shares = st.sidebar.number_input(
     "CURRENT SHARES (TSLA)",
-    min_value=0,
-    max_value=5000,
-    value=2440,  
-    step=10,     
-    key="cyber_cargo_shares"
+    min_value=0, max_value=5000, value=2440, step=10, key="cyber_cargo_shares"
 )
 
 # --- 5. 高速并行数据抓取管道 ---
 @st.cache_data(ttl=300)
 def fetch_cyber_market_data_fast():
     df = tf.download("TSLA ^VIX", period="3mo", interval="1d", group_by='ticker', progress=False)
-    
     if df.empty:
         raise ValueError("Data pipeline returned empty data matrix.")
-        
     tsla_df = df['TSLA'].copy()
     vix_df = df['^VIX'].copy()
     
-    # KDJ 核心算法
+    # KDJ 算法
     low_list = tsla_df['Low'].rolling(9, min_periods=9).min()
     high_list = tsla_df['High'].rolling(9, min_periods=9).max()
     rsv = (tsla_df['Close'] - low_list) / (high_list - low_list) * 100
-    
     tsla_df['K'] = rsv.ewm(com=2).mean()
     tsla_df['D'] = tsla_df['K'].ewm(com=2).mean()
     tsla_df['J'] = 3 * tsla_df['K'] - 2 * tsla_df['D']
-    
     return tsla_df.iloc[-1], vix_df.iloc[-1]
 
 try:
-    with st.spinner("📡 CYBER LINK COUPLING // 正在接入量子网络解算密匙..."):
+    with st.spinner("📡 CYBER LINK COUPLING // 正在解算量子量化矩阵..."):
         last_tsla, last_vix = fetch_cyber_market_data_fast()
     
     tsla_price = float(last_tsla['Close'].values[0] if isinstance(last_tsla['Close'], pd.Series) else last_tsla['Close'])
@@ -189,7 +202,6 @@ try:
     # --- 7. OPTIMUS 进度条 ---
     st.markdown("<h4 style='color:#e0e0e0; margin-bottom:10px;'>🤖 OPTIMUS ACCUMULATION PROFILE</h4>", unsafe_allow_html=True)
     target_shares = 3000
-    
     safe_shares = min(current_shares, target_shares)
     progress_percent = (safe_shares / target_shares) * 100
     shares_left = max(target_shares - current_shares, 0)
@@ -206,8 +218,43 @@ try:
     </div>
     """
     st.markdown(progress_html, unsafe_allow_html=True)
+
+    # --- 8. 🎯 核心升级板块：二号 & 三号联动矩阵 (时间价值干涸 + 50.5%高IV精准解算标准差防线) ---
+    st.markdown("<h4 style='color:#e0e0e0; margin-bottom:10px;'>🛰️ DEEP-SEA QUANT MATRIX</h4>", unsafe_allow_html=True)
     
-    # --- 8. 综合收割指数半表盘 ---
+    tsla_iv = 0.505 
+    one_sigma_move = tsla_price * tsla_iv * np.sqrt(days_to_friday / 365)
+    sigma_1_floor = tsla_price - one_sigma_move
+    sigma_2_floor = tsla_price - (2 * one_sigma_move)
+    
+    total_week_days = 7
+    days_passed = total_week_days - days_to_friday
+    theta_decay_percent = min((days_passed / total_week_days) * 100 + 15, 99.0) 
+    
+    matrix_html = f"""
+    <div class="matrix-box">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+            <span style="color: #888;">🛡️ 1-SIGMA 防线 (68%概率安全):</span>
+            <span style="color: #00f3ff; font-weight: bold;">${sigma_1_floor:.2f}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+            <span style="color: #888;">🧱 2-SIGMA 铁壁 (95%密不透风):</span>
+            <span style="color: #ff00ff; font-weight: bold;">${sigma_2_floor:.2f}</span>
+        </div>
+        <div style="border-top: 1px dashed #333; padding-top: 12px;">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #888; margin-bottom: 4px;">
+                <span>⏳ 本周五合约时间价值(THETA)干涸进度</span>
+                <span style="color: #00ff41;">{theta_decay_percent:.1f}% DECAYED</span>
+            </div>
+            <div style="background: #222; height: 6px; border-radius: 3px; overflow: hidden;">
+                <div style="width: {theta_decay_percent:.1f}%; background: #00ff41; height: 100%; box-shadow: 0 0 8px #00ff41;"></div>
+            </div>
+        </div>
+    </div>
+    """
+    st.markdown(matrix_html, unsafe_allow_html=True)
+    
+    # --- 9. 综合收割指数半表盘 ---
     st.markdown("<h4 style='color:#e0e0e0; margin-bottom:5px;'>🌊 INTEGRATED HARVEST INDEX</h4>", unsafe_allow_html=True)
     j_score = np.clip((100 - j_val) / 1.2, 0, 60)
     vix_score = np.clip(vix_val * 2, 0, 40)
@@ -227,33 +274,49 @@ try:
             ],
         }
     ))
-    fig.update_layout(height=220, margin=dict(l=10, r=10, t=30, b=10), template="plotly_dark")
+    fig.update_layout(height=180, margin=dict(l=10, r=10, t=20, b=10), template="plotly_dark")
     fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig, use_container_width=True)
     
-    # --- 9. 动态战术建议 ---
+    # --- 10. 动态战术建议 ---
     if j_val < 0:
         advice_html = f"""
         <div class="advice-box advice-critical">
             ⚡ <strong>[CRITICAL PROTOCOL // 深水炸弹触发]</strong><br>
-            J值已彻底击穿0轴底线（当前实时精确值: <strong>{j_val:.1f}</strong>），市场情绪陷入极端恐慌冰点，深水水位极其“厚实”！核心仓位防御圈完全打开。建议立刻执行收割，在 Moomoo/Firstrade 坚决挂单高溢价 Sell Put，全速抢夺权利金肥肉！
+            J值已彻底击穿0轴底线（当前实时精确值: <strong>{j_val:.1f}</strong>），市场情绪陷入极端恐慌冰点！核心仓位防御圈完全打开。建议立刻执行收割，对照下方 <strong>2-Sigma 铁壁价位</strong> 在 Moomoo 挂单高溢价 Sell Put！
         </div>
         """
     elif j_val <= 20:
         advice_html = f"""
         <div class="advice-box advice-success">
             🐟 <strong>[TACTICAL SIGNAL // 鱼群大量进窝]</strong><br>
-            J值已成功杀入20以下的“安全厚实区间”（当前实时精确值: <strong>{j_val:.1f}</strong>）。水流深度符合捕鱼指标，期权隐波处于优势期。下网时机完全成熟，适合分批次、多节点部署阶梯式 Put 防御拦截网，稳步向 3000 股终极目标靠拢。
+            J值已成功杀入20以下的“安全厚实区间”（当前: <strong>{j_val:.1f}</strong>）。水流深度符合捕鱼指标。下网时机完全成熟，适合分批次部署 Put 防御拦截网。
         </div>
         """
     else:
         advice_html = f"""
         <div class="advice-box advice-warning">
             ☕ <strong>[STANDBY MODE // 静默喝咖啡等待]</strong><br>
-            当前J值依然飘在空中（当前实时精确值: <strong>{j_val:.1f}</strong>），高于20临界值，水流太薄，多头仍在高位拉扯。长线猎手请保持克制，切勿抢跑接飞刀。将看盘权限全权移交 Fisherman 定时系统，静候指标落地。
+            当前J值依然飘在空中（当前: <strong>{j_val:.1f}</strong>），水流太薄。别抢跑接飞刀。安心喝咖啡，静候指标落地。
         </div>
         """
     st.markdown(advice_html, unsafe_allow_html=True)
+    
+    # --- 11. 🤖 核心升级板块：四号模块 (马斯克愿景事件时钟面板) ---
+    st.markdown("<h4 style='color:#e0e0e0; margin-top:25px; margin-bottom:10px;'>🪐 CYBERNETIC CHRONO-MATRIX</h4>", unsafe_allow_html=True)
+    chrono_html = f"""
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-family: 'Ubuntu Mono'; text-align: center;">
+        <div style="background: #0d0d0d; border: 1px solid #ffaa00; padding: 10px; border-radius: 4px;">
+            <div style="color: #ffaa00; font-size: 20px; font-weight: bold; font-family: 'Orbitron';">{days_to_earnings} DAYS</div>
+            <div style="color: #888; font-size: 11px; margin-top: 5px;">🤖 NEXT EARNINGS NIGHT</div>
+        </div>
+        <div style="background: #0d0d0d; border: 1px solid #ff00ff; padding: 10px; border-radius: 4px;">
+            <div style="color: #ff00ff; font-size: 20px; font-weight: bold; font-family: 'Orbitron';">{days_to_optimus} DAYS</div>
+            <div style="color: #888; font-size: 11px; margin-top: 5px;">🦾 OPTIMUS BETA FACTORY RUN</div>
+        </div>
+    </div>
+    """
+    st.markdown(chrono_html, unsafe_allow_html=True)
 
 except Exception as e:
     st.error(f"📡 终端核心网元连接超时。ERROR CODES: {e}")
