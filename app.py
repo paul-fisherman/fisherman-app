@@ -7,18 +7,17 @@ from streamlit_autorefresh import st_autorefresh
 from datetime import datetime
 import pytz
 
-# --- 0. 自动刷新配置（5分钟赛博发条） ---
-# 5分钟 = 5 * 60 * 1000 = 300000 毫秒
-st_autorefresh(interval=5 * 60 * 1000, key="cyber_refresh")
-
-# --- 1. 赛博朋克 UI 视觉注入 (定制 CSS HUD) ---
+# --- 0. 页面基础配置 (Streamlit 铁律：必须作为绝对第一条命令执行) ---
 st.set_page_config(page_title="FISHERMAN // TERMINAL", layout="centered")
 
+# --- 1. 自动刷新配置（5分钟赛博发条） ---
+st_autorefresh(interval=5 * 60 * 1000, key="cyber_refresh")
+
+# --- 2. 赛博朋克 UI 视觉注入 (定制 CSS HUD) ---
 cyber_css = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Ubuntu+Mono&display=swap');
     
-    /* 核心背景与字体定义 */
     .stApp {
         background-color: #050505 !important;
         background-image: linear-gradient(rgba(0, 243, 255, 0.02) 1px, transparent 1px),
@@ -50,7 +49,6 @@ cyber_css = """
         text-shadow: 0 0 8px #ff00ff;
     }
 
-    /* 赛博 HUD 数据方块 */
     .hud-container {
         display: flex;
         gap: 15px;
@@ -83,7 +81,6 @@ cyber_css = """
         font-weight: bold;
     }
     
-    /* 极致美化战术建议框 */
     .advice-box {
         padding: 20px;
         border-radius: 4px;
@@ -115,29 +112,43 @@ cyber_css = """
 """
 st.markdown(cyber_css, unsafe_allow_html=True)
 
-# --- 2. 实时北京时间校准 ---
+# --- 3. 实时北京时间校准 ---
 beijing_tz = pytz.timezone('Asia/Shanghai')
 beijing_time = datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')
 
 # 终端主标题渲染
-st.markdown('<div class="cyber-title">FISHERMAN // MAINNET 1.0</div>', unsafe_allow_html=True)
+st.markdown('<div class="cyber-title">FISHERMAN // MAINNET 2.0</div>', unsafe_allow_html=True)
 st.markdown('<div class="cyber-subtitle">// TSLA QUANTUM RADAR //</div>', unsafe_allow_html=True)
 
-# 侧边栏置顶时间线
+# --- 4. 侧边栏多维控制台 (北京时间 + 2.0 货舱控制器) ---
 st.sidebar.markdown("### 📡 TERMINAL STATUS")
 st.sidebar.markdown(f"⏱️ **BEIJING TIME**:\n`{beijing_time}`")
 st.sidebar.markdown("⚡ **REFRESH RATE**: `5 MINS`")
+st.sidebar.markdown("---")
 
-# --- 3. 数据抓取与 KDJ 计算 (全面对齐 5分钟 缓存) ---
-@st.cache_data(ttl=300)  # 严格锁定 300 秒缓存
-def fetch_cyber_market_data():
-    tsla_df = tf.download("TSLA", period="3mo", interval="1d")
-    vix_df = tf.download("^VIX", period="1mo", interval="1d")
+# 🎛️ 2.0 货舱控制器
+st.sidebar.markdown("### 🎛️ CARGO CONTROLLER")
+current_shares = st.sidebar.number_input(
+    "CURRENT SHARES (TSLA)",
+    min_value=0,
+    max_value=5000,
+    value=2440,  
+    step=10,     
+    key="cyber_cargo_shares"
+)
+
+# --- 5. 高速并行数据抓取管道 ---
+@st.cache_data(ttl=300)
+def fetch_cyber_market_data_fast():
+    df = tf.download("TSLA ^VIX", period="3mo", interval="1d", group_by='ticker', progress=False)
     
-    if tsla_df.empty or vix_df.empty:
+    if df.empty:
         raise ValueError("Data pipeline returned empty data matrix.")
         
-    # KDJ 核心算法逻辑
+    tsla_df = df['TSLA'].copy()
+    vix_df = df['^VIX'].copy()
+    
+    # KDJ 核心算法
     low_list = tsla_df['Low'].rolling(9, min_periods=9).min()
     high_list = tsla_df['High'].rolling(9, min_periods=9).max()
     rsv = (tsla_df['Close'] - low_list) / (high_list - low_list) * 100
@@ -149,14 +160,14 @@ def fetch_cyber_market_data():
     return tsla_df.iloc[-1], vix_df.iloc[-1]
 
 try:
-    last_tsla, last_vix = fetch_cyber_market_data()
+    with st.spinner("📡 CYBER LINK COUPLING // 正在接入量子网络解算密匙..."):
+        last_tsla, last_vix = fetch_cyber_market_data_fast()
     
-    # 转换为原生浮点数，杜绝多维索引污染
     tsla_price = float(last_tsla['Close'].values[0] if isinstance(last_tsla['Close'], pd.Series) else last_tsla['Close'])
     j_val = float(last_tsla['J'].values[0] if isinstance(last_tsla['J'], pd.Series) else last_tsla['J'])
     vix_val = float(last_vix['Close'].values[0] if isinstance(last_vix['Close'], pd.Series) else last_vix['Close'])
     
-    # --- 4. 赛博 HUD 仪表板渲染 ---
+    # --- 6. 赛博 HUD 仪表板渲染 ---
     hud_html = f"""
     <div class="hud-container">
         <div class="hud-box">
@@ -175,12 +186,13 @@ try:
     """
     st.markdown(hud_html, unsafe_allow_html=True)
     
-    # --- 5. OPTIMUS 进度条 (赛博渐变霓虹版) ---
+    # --- 7. OPTIMUS 进度条 ---
     st.markdown("<h4 style='color:#e0e0e0; margin-bottom:10px;'>🤖 OPTIMUS ACCUMULATION PROFILE</h4>", unsafe_allow_html=True)
-    current_shares = 2440
     target_shares = 3000
-    progress_percent = (current_shares / target_shares) * 100
-    shares_left = target_shares - current_shares
+    
+    safe_shares = min(current_shares, target_shares)
+    progress_percent = (safe_shares / target_shares) * 100
+    shares_left = max(target_shares - current_shares, 0)
     
     progress_html = f"""
     <div style="background: #111; border: 1px solid #00ff41; height: 26px; border-radius: 4px; overflow: hidden; position: relative; margin-bottom: 10px;">
@@ -195,7 +207,7 @@ try:
     """
     st.markdown(progress_html, unsafe_allow_html=True)
     
-    # --- 6. 综合收割指数半表盘 ---
+    # --- 8. 综合收割指数半表盘 ---
     st.markdown("<h4 style='color:#e0e0e0; margin-bottom:5px;'>🌊 INTEGRATED HARVEST INDEX</h4>", unsafe_allow_html=True)
     j_score = np.clip((100 - j_val) / 1.2, 0, 60)
     vix_score = np.clip(vix_val * 2, 0, 40)
@@ -219,7 +231,7 @@ try:
     fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig, use_container_width=True)
     
-    # --- 7. 动态战术建议 (彻底修复 Bug 的高精度阶梯逻辑门) ---
+    # --- 9. 动态战术建议 ---
     if j_val < 0:
         advice_html = f"""
         <div class="advice-box advice-critical">
